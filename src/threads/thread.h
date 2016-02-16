@@ -89,6 +89,19 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
+    
+    //sleep list
+    struct list_elem sleepelem;
+    int64_t wakeup_time; // Used for timer_sleep()
+    
+    //priority scheduling
+    struct thread *waiting_for;		/* Thread holding a lock */
+    //struct list_elem lockelem;		/* List element for locks */
+    
+    int curr_donations;			/* # of priority inheritors */
+    int base_priority;			/* Priority before inversion */
+    struct list_elem waiter;		/* List element for lock waiting list */
+    struct list lock_list;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -130,6 +143,8 @@ void thread_yield (void);
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
 
+// priority helper function
+int get_pri (struct thread *t);
 int thread_get_priority (void);
 void thread_set_priority (int);
 
