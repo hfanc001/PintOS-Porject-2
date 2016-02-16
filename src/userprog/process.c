@@ -17,6 +17,22 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
+
+struct exec_helper 
+  {
+    const char file_name[16];	/* first part form cmd_line */
+    char file_name_[16];
+    size_t fn_length;		/* length of file_name */
+    const char *cmd_line;	/* whole command line entry */
+    char *cmd_line_;
+    struct semaphore semaphore;
+    bool load_success;
+    
+    //## Add other stuff you need to transfer between process_execute and
+    //   process_start (hint, think of the children... need a way to add to 
+    //   the child's list, see below about thread's child list.)
+  };
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -26,46 +42,63 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
-process_execute (const char *file_name) 
+process_execute (const char *cmd_line) 
 {
-  char *fn_copy;
+  struct exec_helper exec;
+  char thread_name[16];
+  char *save_ptr;
+  printf ("cmd_line: %s\n", cmd_line);
+  //printf (strlen (cmd_line));
+
+  exec.cmd_line = cmd_line;
+  char cmd_line_[strlen (cmd_line) + 1];
+  strlcpy (cmd_line_, cmd_line, strlen (cmd_line) + 1);
+  exec.cmd_line_ = cmd_line_;
+  printf ("exec.cmd_line_: %s\n", exec.cmd_line_);
+
+  char *thread_name_ = strtok_r (cmd_line_, " ", &save_ptr);
+  strlcpy (exec.file_name_, thread_name_, strlen (thread_name_) + 1);
+  exec.fn_length = strlen (thread_name_);
+
+  if (exec.fn_length > 16 || thread_name_ == NULL )
+    return TID_ERROR;
+  strlcpy (thread_name, thread_name_, strlen (thread_name_));
+
+  sema_init (&exec.semaphore, 0);
   tid_t tid;
 
-  /* Make a copy of FILE_NAME.
-     Otherwise there's a race between the caller and load(). */
-  fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
-    return TID_ERROR;
-  strlcpy (fn_copy, file_name, PGSIZE);
-
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
-  if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+  tid = thread_create (thread_name, PRI_DEFAULT, start_process,(void *)&exec);
+  if (tid != TID_ERROR)
+    {
+      sema_down (&exec.semaphore);
+    }
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *exec)
 {
-  char *file_name = file_name_;
+  struct exec_helper *exec_ = ((struct exec_helper *)exec);
+  const char *file_name = exec_->file_name;
   struct intr_frame if_;
-  bool success;
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  exec_->load_success = load (file_name, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
-  if (!success) 
-    thread_exit ();
-
+  //palloc_free_page (exec_);
+  if (!(exec_->load_success) )
+    {
+      sema_up (&exec_->semaphore);
+      thread_exit ();
+    }
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -206,9 +239,13 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
 bool
-load (const char *file_name, void (**eip) (void), void **esp) 
-{
+load (const char *cmd_line, void (**eip) (void), void **esp) 
+{ 
   struct thread *t = thread_current ();
+  char file_name[NAME_MAX + 2];
+  char cmd_line_[strlen (cmd_line)];
+  strlcpy (cmd_line_, cmd_line, strlen (cmd_line));
+
   struct Elf32_Ehdr ehdr;
   struct file *file = NULL;
   off_t file_ofs;
@@ -220,6 +257,14 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
+  
+  char *save_ptr;
+  char *file_name_ = strtok_r (cmd_line_, " ", &save_ptr);
+
+  strlcpy (file_name, file_name_, strlen (file_name_));
+
+  if (strlen (file_name) > 16 || file_name == NULL)
+    goto done;
 
   /* Open executable file. */
   file = filesys_open (file_name);
@@ -228,6 +273,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
+
+  file_deny_write (file);
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -238,7 +285,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
       || ehdr.e_phentsize != sizeof (struct Elf32_Phdr)
       || ehdr.e_phnum > 1024) 
     {
-      printf ("load: %s: error loading executable\n", file_name);
+      printf ("load: %s: error loading executable\n", file_name_);
       goto done; 
     }
 
@@ -302,7 +349,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack ((void *)&cmd_line))
     goto done;
 
   /* Start address. */
@@ -312,7 +359,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
   return success;
 }
 
@@ -437,7 +483,7 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE;
+        *esp = PHYS_BASE - 12;
       else
         palloc_free_page (kpage);
     }
