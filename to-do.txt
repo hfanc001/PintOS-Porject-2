@@ -13,6 +13,7 @@ Part 2: syscall
 	   are testing our process.c functions such as load and process_Execute, we can 
 	   know for sure that our syscall functions is working correcty and that the bug
 	   -if we have any- will have to be from process.c)
+	- can test by copying the make check test and modify them to fit our needs
 
 Part 3: parent/child processes
 	- has to deal with the parent/child funcitonality
