@@ -1,0 +1,22 @@
+PintOS Project 2 TO-DO
+--
+
+Part 1: process.c
+	- implement arguement passing (parsing)
+	- set up memory space (kernel memory and user virtual memory, page table, etc)
+
+Part 2: syscall
+	- execute actual arguements (eg. cat, echo, etc)
+	- suggested to be implemented first
+	- can write individual tests to test the functionality of the syscall functions
+	  (doing so can make sure that our syscall functions are correct, and so when we
+	   are testing our process.c functions such as load and process_Execute, we can 
+	   know for sure that our syscall functions is working correcty and that the bug
+	   -if we have any- will have to be from process.c)
+
+Part 3: parent/child processes
+	- has to deal with the parent/child funcitonality
+	- each process is a thread, so we can use the functions in thread.c to implement 
+	- thesea re set up in process.c
+	- after we have this correctly set up in process.c, we can then finish implement 
+	  syscall functions that deal with parent/child (eg. wait, exit, etc)
