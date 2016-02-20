@@ -102,9 +102,16 @@ struct thread
     int base_priority;			/* Priority before inversion */
     struct list_elem waiter;		/* List element for lock waiting list */
     struct list lock_list;
+    void* exec;
+    struct list_elem child_of;		/* elem for being a child of a parent */
+    struct list file_list;
+    struct list child_list;
+    struct thread *parent;
+    int new_fd;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
+
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
