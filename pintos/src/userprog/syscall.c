@@ -35,7 +35,11 @@ void exit (int status)
 	If the process's parent waits for it (see below), 
 	this is the status that will be returned. Conventionally, 
 	a status of 0 indicates success and nonzero values indicate errors. 
-	* */
+	*/
+	
+	//process_exit() to free the resource
+	
+	
 }
 
 //runs the executable that is passed in
@@ -103,24 +107,27 @@ int open (const char *file)
  * in separate calls to close and they do not share a file position.
 */
 
-	struct inode *fd = filesys_open (file);
+	struct file *file_name = filesys_open (file);
 	
 	//if fail to open
 	if (fd = NULL)
 		return -1; 
 		
-	//if open, return the Sector number of disk location
-	else
-		return fd.sector;
+	//if open, return the fd
+	
+	//fist check the current thread
+	//find the next available fd
+	//in thread's fd table, give the next available the current file name
+	//return the next available fd
 }
 
 
 //return the file size
 int filesize (int fd)
 {
-/*
- * Returns the size, in bytes, of the file open as fd.	
-*/
+	//go to current thread's fd table
+	//find the fd 
+	//return the size of the fd file using file_length (struct file *file) 
 }
 
 //read the content in the file by putting it into the buffer
@@ -134,6 +141,12 @@ int read (int fd, void *buffer, unsigned size)
  * 
  * Fd 0 reads from the keyboard using input_getc().	
 */	
+	//if fd == 0
+	//read from keyboard
+	
+	//else open the file from fd
+	//copy the content into the buffer
+	//return the number of bytes opened
 }
 
 //write to the file that is already opened
@@ -156,6 +169,13 @@ int write (int fd, const void *buffer, unsigned size)
  * at least as long as size is not bigger than a few hundred bytes. 
  * (It is reasonable to break up larger buffers.) 
 */
+
+	//if fd == 1
+	//write the buffer to the console
+	//return
+	
+	//open the file at the fd table
+	//
 }
 
 //cheange the next byte to be readable or writable
