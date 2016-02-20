@@ -1,5 +1,6 @@
 #include "list.h"
 #include "../debug.h"
+#include <stdbool.h>
 
 /* Our doubly linked lists have two header elements: the "head"
    just before the first element and the "tail" just after the
@@ -524,4 +525,14 @@ list_min (struct list *list, list_less_func *less, void *aux)
           min = e; 
     }
   return min;
+}
+
+struct list_elem *
+list_find (struct list *list, list_find_func *find, int v, void *aux)
+{
+  struct list_elem *e;
+    for (e = list_begin (list); e != list_end (list); e = list_next (e))
+      if (find (e, v, aux))
+        return e;
+  return NULL;
 }
