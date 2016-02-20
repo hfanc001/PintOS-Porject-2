@@ -4,6 +4,7 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "devices/shutdown.h"
+#include "filesys/filesys.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -33,7 +34,8 @@ void exit (int status)
 	Terminates the current user program, returning status to the kernel. 
 	If the process's parent waits for it (see below), 
 	this is the status that will be returned. Conventionally, 
-	a status of 0 indicates success and nonzero values indicate errors. */
+	a status of 0 indicates success and nonzero values indicate errors. 
+	* */
 }
 
 //runs the executable that is passed in
@@ -64,25 +66,15 @@ int wait (pid_t pid)
 //creates a new file
 bool create (const char *file, unsigned initial_size)
 {
-/*
- * Creates a new file called file initially initial_size bytes in size. 
- * Returns true if successful, false otherwise. 
- * 
- * Creating a new file does not open it: 
- * 			opening the new file is a separate operation which would require a open system call.
-*/
+	//return true if succeed, false otherwise
+	return filesys_create (file, initial_size);
 }
 
 //deletes the file that is passed in and return the status of deletion
 bool remove (const char *file)
 {
-/*
- * Deletes the file called file. 
- * Returns true if successful, false otherwise. 
- * 
- * A file may be removed regardless of whether it is open or closed, 
- * removing an open file does not close it. 
-*/
+	//return true if successful, false otherwise
+	return filesys_remove (file); 
 }
 
 //open the passed in file and either return the fd or -1 
@@ -97,7 +89,7 @@ int open (const char *file)
  * 			fd 0 (STDIN_FILENO) is standard input
  * 			fd 1 (STDOUT_FILENO) is standard output. T
  * 
- * he open system call will never return either of these file descriptors, 
+ * the open system call will never return either of these file descriptors, 
  * which are valid as system call arguments only as explicitly described below.
  * 
  * Each process has an independent set of file descriptors. 
@@ -110,7 +102,18 @@ int open (const char *file)
  * Different file descriptors for a single file are closed independently 
  * in separate calls to close and they do not share a file position.
 */
+
+	struct inode *fd = filesys_open (file);
+	
+	//if fail to open
+	if (fd = NULL)
+		return -1; 
+		
+	//if open, return the Sector number of disk location
+	else
+		return fd.sector;
 }
+
 
 //return the file size
 int filesize (int fd)
