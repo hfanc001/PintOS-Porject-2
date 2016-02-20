@@ -19,20 +19,7 @@
 #include "threads/vaddr.h"
 #include "threads/synch.h"
 
-struct exec_helper 
-  {
-    const char file_name[16];	/* first part form cmd_line */
-    char file_name_[16];
-    size_t fn_length;		/* length of file_name */
-    const char *cmd_line;	/* whole command line entry */
-    char *cmd_line_;
-    struct semaphore semaphore;
-    bool load_success;
-    
-    //## Add other stuff you need to transfer between process_execute and
-    //   process_start (hint, think of the children... need a way to add to 
-    //   the child's list, see below about thread's child list.)
-  };
+#include <list.h>
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -45,27 +32,26 @@ tid_t
 process_execute (const char *cmd_line) 
 {
   struct exec_helper exec;
+  struct thread *t = thread_current ();
   char thread_name[16];
   char *save_ptr;
-  printf ("cmd_line: %s\n", cmd_line);
-  printf ("cmd_line size: %i\n", strlen (cmd_line));
 
   exec.cmd_line = cmd_line;
+  
   char cmd_line_[strlen (cmd_line) + 1];
   strlcpy (cmd_line_, cmd_line, strlen (cmd_line) + 1);
-  exec.cmd_line_ = cmd_line_;
-  printf ("exec.cmd_line_: %s\n", exec.cmd_line_);
 
   char *thread_name_ = strtok_r (cmd_line_, " ", &save_ptr);
   strlcpy (exec.file_name_, thread_name_, strlen (thread_name_) + 1);
+
   exec.fn_length = strlen (thread_name_);
 
   if (exec.fn_length > 15 || thread_name_ == NULL )
     return TID_ERROR;
   strlcpy (thread_name, thread_name_, strlen (thread_name_) + 1);
-  printf ("thread_name: %s\n", thread_name);
 
   sema_init (&exec.semaphore, 0);
+
   tid_t tid;
 
   /* Create a new thread to execute FILE_NAME. */
@@ -83,10 +69,11 @@ static void
 start_process (void *exec)
 {
   struct exec_helper *exec_ = ((struct exec_helper *)exec);
-  const char *file_name = exec_->file_name_;
   const char *cmd_line = exec_->cmd_line;
-  printf ("file_name: %s\n", file_name);
   struct intr_frame if_;
+
+  struct thread *t = thread_current ();
+  t->exec = (void *)exec_;
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -99,9 +86,13 @@ start_process (void *exec)
   //palloc_free_page (exec_);
   if (!(exec_->load_success) )
     {
-      sema_up (&exec_->semaphore);
       thread_exit ();
     }
+  else
+    {
+    }
+
+  sema_up (&exec_->semaphore);
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -109,6 +100,7 @@ start_process (void *exec)
      we just point the stack pointer (%esp) to our stack frame
      and jump to it. */
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
+
   NOT_REACHED ();
 }
 
@@ -248,13 +240,13 @@ load (const char *cmd_line, void (**eip) (void), void **esp)
   char file_name[16];
   char cmd_line_[strlen (cmd_line) + 1];
   strlcpy (cmd_line_, cmd_line, strlen (cmd_line) + 1);
-  printf ("cmd_line_: %s\n", cmd_line_);
 
   struct Elf32_Ehdr ehdr;
   struct file *file = NULL;
   off_t file_ofs;
   bool success = false;
   int i;
+
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
@@ -264,22 +256,28 @@ load (const char *cmd_line, void (**eip) (void), void **esp)
   
   char *save_ptr;
   char *file_name_ = strtok_r (cmd_line_, " ", &save_ptr);
-  printf ("file_name_: %s\n", file_name_);
-  printf ("file_name_ size: %i\n", strlen (file_name_));
 
-  if (strlen (file_name_) > 16 || file_name_ == NULL)
+  if (strlen (file_name_) > 14)
     goto done;
 
+  strlcpy (file_name, file_name_, strlen (file_name_) + 1);
+ 
   /* Open executable file. */
   file = filesys_open (file_name);
   if (file == NULL) 
     {
-      printf ("load: %s: open failed\n", file_name_);
+      printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
 
   file_deny_write (file);
 
+  struct pair p;
+  p.file = file;
+  p.fd = t->new_fd;
+  ++t->new_fd;
+  list_push_back (&t->file_list, &p.elem);
+  
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
