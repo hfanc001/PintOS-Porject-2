@@ -84,6 +84,9 @@ setup_stack_helper ( const char *cmd_line, uint8_t *kpage,
 	
 	// Set stack ptr.
 	*esp = upage + ofs;
+
+	//debug
+	hex_dump((uintptr_t) &esp, kpage, PGSIZE, true);
 	
 	// If you've made it this far, we did it ^^
 	return true;
