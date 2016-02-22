@@ -23,6 +23,71 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static bool setup_stack_helper(const char *cmdline, uint8_t *kpage, uint8_t *upage, void **esp);
+
+/* Pushes the SIZE bytes in BUF onto the stack in KPAGE, whose
+   page-relative stack pointer is *OFS, and then adjusts *OFS
+   appropriately.  The bytes pushed are rounded to a 32-bit
+   boundary.
+
+   If successful, returns a pointer to the newly pushed object.
+   On failure, returns a null pointer. */
+static void *
+push (uint8_t *kpage, size_t *offset, const void *buf, size_t size)
+{
+	// Word-aligned accesses are faster than unaligned accesses
+	// so we round to multiple of 4
+	size_t padsize = ROUND_UP (size, sizeof (uint32_t));
+	
+	if (*offset < padsize){
+		return NULL;
+	}
+	
+	*offset -= padsize;
+	
+	memcpy (kpage + *offset + (padsize - size), buf, size);
+	
+	return kpage + *offset + (padsize - size);
+}
+
+static bool 
+setup_stack_helper ( const char *cmd_line, uint8_t *kpage, 
+					uint8_t *upage, void **esp )
+{
+	size_t ofs = PGSIZE;
+	char* const null = NULL; // happy little null
+	char **argv; // array for arguments
+	int argc = 0; // arg count
+	char *ptr; // strtok_r() save pointer
+	
+	// Tokenize the command line delimited by spaces
+	char *token = strtok_r(cmd_line, " ", &ptr);
+	while (token != NULL)
+	{
+		argv[argc] = token;
+		argc++;
+		// need to push each argument onto stackerino
+		if (push(kpage, &ofs, &token, sizeof(token)) == NULL)
+			return false;
+		token = strtok_r(NULL, " ", &ptr);
+	}
+	
+	// Push null
+	if (push(kpage, &ofs, &null, sizeof(null)) == NULL) return false;
+	// Push argv addresses **IN REVERSE**
+	if (push(kpage, &ofs, &argv, sizeof(argv)) == NULL) return false;
+	// Push argc
+	if (push(kpage, &ofs, &argc, sizeof(argc)) == NULL) return false;
+	// Push another null
+	if (push(kpage, &ofs, &null, sizeof(null)) == NULL) return false;
+	// Should you check for NULL returns?
+	
+	// Set stack ptr.
+	*esp = upage + ofs;
+	
+	// If you've made it this far, we did it ^^
+	return true;
+}
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -223,7 +288,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (void **esp, char *cmd_line);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -351,7 +416,8 @@ load (const char *cmd_line, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack ((void *)&cmd_line))
+  //if (!setup_stack ((void *)&cmd_line))
+  if (!setup_stack (esp, cmd_line))
     goto done;
 
   /* Start address. */
@@ -475,7 +541,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp) 
+setup_stack (void **esp, char *cmd_line) 
 {
   uint8_t *kpage;
   bool success = false;
@@ -485,7 +551,10 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE - 12;
+        //*esp = PHYS_BASE - 12;
+        return setup_stack_helper(cmd_line, kpage, 
+									((uint8_t *) PHYS_BASE) - PGSIZE,
+									esp);
       else
         palloc_free_page (kpage);
     }
