@@ -120,7 +120,38 @@ start_process (void *exec)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  return -1;
+	struct thread *parent = thread_current();
+	struct list_elem *tmp;
+	struct thread *child;
+
+	//find the thread struct of the child_tid
+  for (tmp = list_begin (&parent->child_list); tmp != list_end (&parent->child_list);
+       tmp = list_next (tmp))
+  {
+		struct thread *curr = list_entry (tmp, struct thread, elem);
+    if (child_tid == curr->tid)
+			child = curr;			
+  }
+  
+  //if the child does not exist
+  if (child == NULL)
+		return -1;
+		
+	//if the child already called wait	
+	if (child->wait_cnt > 0)
+		return -1;
+		
+	child->wait_cnt++;
+		
+	enum thread_status child_status = child->status;
+	
+	//if the child is running, ready, or blocked, put the parent to sleep
+	while (child->exit_cnt == 0)
+	{
+		thread_block();
+	}
+	
+	return child->status;
 }
 
 /* Free the current process's resources. */
@@ -133,6 +164,9 @@ process_exit (void)
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
+  
+  cur->exit_cnt++;
+  
   if (pd != NULL) 
     {
       /* Correct ordering here is crucial.  We must set

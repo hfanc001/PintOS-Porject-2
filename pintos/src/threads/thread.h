@@ -108,6 +108,8 @@ struct thread
     struct list child_list;
     struct thread *parent;
     int new_fd;
+    int wait_cnt;
+    int exit_cnt;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
