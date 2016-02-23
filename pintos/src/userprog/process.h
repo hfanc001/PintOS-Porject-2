@@ -22,6 +22,8 @@ struct exec_helper
     const char *cmd_line;       /* whole command line entry */
     struct semaphore semaphore;
     bool load_success;
+    struct thread *thread;
+    struct thread *parent;
   };
 
 
