@@ -23,8 +23,6 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-//static bool setup_stack_helper(const char *cmdline, uint8_t *kpage, uint8_t *upage, void **esp);
-
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -357,7 +355,6 @@ load (const char *cmd_line, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  //if (!setup_stack ((void *)&cmd_line))
   if (!setup_stack (esp, cmd_line))
     goto done;
 
@@ -479,29 +476,16 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   return true;
 }
 
-/* Pushes the SIZE bytes in BUF onto the stack in KPAGE, whose
-   page-relative stack pointer is *OFS, and then adjusts *OFS
-   appropriately.  The bytes pushed are rounded to a 32-bit
-   boundary.
-
-   If successful, returns a pointer to the newly pushed object.
-   On failure, returns a null pointer. */
 static void *
 push (uint8_t *kpage, size_t *offset, const void *buf, size_t size)
 {
-	// Word-aligned accesses are faster than unaligned accesses
-	// so we round to multiple of 4
-	size_t padsize = ROUND_UP (size, sizeof (uint32_t));
-	
-	if (*offset < padsize){
-		return NULL;
-	}
-	
-	*offset -= padsize;
-	
-	memcpy (kpage + *offset + (padsize - size), buf, size);
-	
-	return kpage + *offset + (padsize - size);
+  size_t padsize = ROUND_UP (size, sizeof (uint32_t));
+  if (*offset < padsize)
+    return NULL;
+  
+  *offset -= padsize;
+  memcpy (kpage + *offset + (padsize - size), buf, size);
+  return kpage + *offset + (padsize - size);
 }
 
 static size_t
@@ -517,49 +501,6 @@ arg_count (const char *cmd_line)
   return count;
 }
 
-static bool 
-setup_stack_helper ( const char *cmd_line, uint8_t *kpage, 
-					uint8_t *upage, void **esp )
-{
-	size_t ofs = PGSIZE;
-	char* const null = NULL; // happy little null
-	char **argv; // array for arguments
-	int argc = 0; // arg count
-	char *ptr; // strtok_r() save pointer
-	
-	// Tokenize the command line delimited by spaces
-	char *token = strtok_r(cmd_line, " ", &ptr);
-	while (token != NULL)
-	{
-		argv[argc] = token;
-		argc++;
-		// need to push each argument onto stackerino
-		if (push(kpage, &ofs, &token, sizeof(token)) == NULL)
-			return false;
-		token = strtok_r(NULL, " ", &ptr);
-	}
-	
-	// Push null
-	if (push(kpage, &ofs, &null, sizeof(null)) == NULL) return false;
-	// Push argv addresses **IN REVERSE**
-	if (push(kpage, &ofs, &argv, sizeof(argv)) == NULL) return false;
-	// Push argc
-	if (push(kpage, &ofs, &argc, sizeof(argc)) == NULL) return false;
-	// Push another null
-	if (push(kpage, &ofs, &null, sizeof(null)) == NULL) return false;
-	// Should you check for NULL returns?
-	
-	// Set stack ptr.
-	*esp = upage + ofs;
-
-	//debug
-	hex_dump((uintptr_t) &esp, kpage, PGSIZE, true);
-	
-	// If you've made it this far, we did it ^^
-	return true;
-}
-#if 0
-/*
 static bool
 setup_stack_helper (const char *cmd_line, uint8_t *kpage, uint8_t *upage,
                     void **esp)
@@ -636,12 +577,11 @@ setup_stack_helper (const char *cmd_line, uint8_t *kpage, uint8_t *upage,
   hex_dump ((uintptr_t) &esp, kpage, PGSIZE, true);
   return true;
 }
-*/
-#endif
+
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp, char *cmd_line) 
+setup_stack (void **esp, const char *cmd_line) 
 {
   uint8_t *kpage;
   bool success = false;

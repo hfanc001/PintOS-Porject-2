@@ -662,6 +662,28 @@ allocate_tid (void)
 
   return tid;
 }
+
+void
+remove_as_parent (struct thread *t)
+{
+  struct list *list = &t->child_list;
+  if (list_empty (list))
+    return;
+  struct thread *curr;
+  struct list_elem *e;
+  for (e = list_begin (list); e != list_end (list); e = list_next (e))
+    {
+      curr = list_entry (e, struct thread, elem);
+      curr->parent = NULL;
+    }
+}
+
+void
+remove_as_child (struct thread *t)
+{
+  if (t->parent != NULL)
+    list_remove (&t->child_of);
+}
 
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */

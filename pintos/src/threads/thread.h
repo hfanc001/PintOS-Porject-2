@@ -160,4 +160,8 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
+/* parent/child relationship functions */
+void remove_as_parent (struct thread *t);
+void remove_as_child (struct thread *t);
+
 #endif /* threads/thread.h */
