@@ -18,6 +18,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/synch.h"
+#include "threads/malloc.h"
 
 #include <list.h>
 
@@ -120,7 +121,7 @@ start_process (void *exec)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-	struct thread *parent = thread_current();
+	/*struct thread *parent = thread_current();
 	struct list_elem *tmp;
 	struct thread *child;
 
@@ -151,7 +152,8 @@ process_wait (tid_t child_tid UNUSED)
 		thread_block();
 	}
 	
-	return child->status;
+	return child->status;*/
+  return -1;
 }
 
 /* Free the current process's resources. */
@@ -165,7 +167,7 @@ process_exit (void)
      to the kernel-only page directory. */
   pd = cur->pagedir;
   
-  cur->exit_cnt++;
+ // cur->exit_cnt++;
   
   if (pd != NULL) 
     {
@@ -544,9 +546,11 @@ setup_stack_helper (const char *cmd_line, uint8_t *kpage, uint8_t *upage,
   int i = 0;
   uint8_t word_align = 0;
   char *const null = NULL;
-  char *ptr;
-  char **argv = malloc (argc * 4);
-  char *tmp;
+  //char *ptr;
+  char **argv = malloc (argc * 4+1);
+  char **uarg = malloc (argc * 4+1);
+  char *karg = NULL;
+  //char *tmp;
   bool success = true;
 
   char *token, *save_ptr;
@@ -561,7 +565,14 @@ setup_stack_helper (const char *cmd_line, uint8_t *kpage, uint8_t *upage,
       ++i;
     }
 
-  argv[i] = &null;
+  /* push null argument */
+  argv[argc] = &null;
+  karg = push (kpage, &ofs, argv[argc], sizeof argv[argc]);
+  ASSERT (karg != null);
+  if (!karg)
+    return false;
+  uarg[argc] = upage + (karg -(char *)kpage);
+  
   /* push words onto stack */
   int j;
   unsigned k;
@@ -569,7 +580,11 @@ setup_stack_helper (const char *cmd_line, uint8_t *kpage, uint8_t *upage,
   for (j = argc - 1; j >= 0; --j)
     {
       k = strlen (argv[j]) + 1;
-      push (kpage, &ofs, argv[j], k);
+      karg = push (kpage, &ofs, argv[j], k);
+      if (karg == NULL)
+	return false;
+      uarg[j] = upage + (karg - (char *)kpage);
+      ASSERT (is_user_vaddr(uarg[j]));
       c_count += k;
     }
 
@@ -584,31 +599,46 @@ setup_stack_helper (const char *cmd_line, uint8_t *kpage, uint8_t *upage,
         return false;
     }
 
+  ASSERT (argv == &argv[0]);
+  ASSERT (argv[0] == &argv[0][0]);
+  ASSERT (*argv[0] == argv[0][0]);
 
   /* push null */
-  success = push (kpage, &ofs, argv[i], sizeof argv[i]);
+  ASSERT (is_user_vaddr (uarg[argc]));
+  uarg[argc] = 0;
+  success = push (kpage, &ofs, &uarg[argc], sizeof uarg[argc]);
   if (!success)
     return false;
 
   /* push argument addresses */
   for (j = argc; j >= 0; --j)
     {
-      success = push (kpage, &ofs, &argv[j], sizeof (&argv[j]));
-      if (!success)
+      karg = push (kpage, &ofs, &uarg[j], sizeof (uarg[j]));
+      if (!karg)
         return false;
     }
-  /* push argv address, argc, then return address */
-  success = push (kpage, &ofs, &argv, sizeof (&argv));
+  void *uarg_;
+
+  uarg_ = upage + (karg - (char *)kpage);
+  /* push argv address */
+  ASSERT (is_user_vaddr (uarg_));
+  success = push (kpage, &ofs, &uarg_, sizeof (uarg));
   if (!success)
     return false;
-  success = push (kpage, &ofs, &argc, sizeof &argc);
+
+  /* push argc address */
+  success = push (kpage, &ofs, &argc, sizeof argc);
   if (!success)
     return false;
+
+  /* push return address */
   int return_address = 0;
-  success = push (kpage, &ofs, &return_address, sizeof (&return_address));
+  success = push (kpage, &ofs, &return_address, sizeof (return_address));
+  if (!success)
+    return false;
 
   *esp = upage + ofs;
-  hex_dump ((uintptr_t) &esp, kpage, PGSIZE, true);
+  //hex_dump ((uintptr_t) &esp, kpage, PGSIZE, true);
   return true;
 }
 

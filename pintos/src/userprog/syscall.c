@@ -12,6 +12,8 @@
 #include "filesys/inode.h"
 #include "filesys/filesys.h"
 #include "devices/shutdown.h"
+#include "threads/vaddr.h"
+#include "filesys/directory.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -33,23 +35,35 @@ syscall_init (void)
   return;
 }
 
-void
-get_arguments (struct intr_frame *f, int argc, int argv[3])
+static inline bool
+get_user (uint8_t *dst, const uint8_t *usrc)
 {
-    int *curr = NULL;
-    int i;
-    for (i = 0; i < argc ; ++i)
-      {
-        curr = (int *)(f->esp) + i + 1;
-        argv[i] = *curr;
-      }
+  int eax;
+  asm ("movl $1f, %%eax; movb %2, %%al; movb %%al, %0; 1:"
+       : "=m" (*dst), "=&a" (eax) : "m" (*usrc));
+  return eax != 0;
+}
+
+static void
+copy_in (void *dst_, const void *usrc_ ,size_t size)
+{
+  uint8_t *dst = dst_;
+  const uint8_t *usrc = usrc_;
+
+  for (; size > 0; size--, dst++, usrc++)
+    if (usrc >= (uint8_t *) PHYS_BASE || !get_user (dst, usrc))
+      thread_exit ();
 }
 
 static void
 syscall_handler (struct intr_frame *f) 
 {
   int argv[3];
-  int c = *((int *)(f->esp));
+  int argc;
+  unsigned c; 
+  
+  copy_in (&c, f->esp, sizeof c);
+
   switch (c)
     {
       case SYS_HALT:
@@ -57,63 +71,75 @@ syscall_handler (struct intr_frame *f)
         break;
       
       case SYS_EXIT:
-        get_arguments (f, 1, &argv[0]);
+        argc = 1;
+        copy_in (argv, (uint32_t *) f->esp + 1, sizeof *argv * argc);
         exit (argv[0]);
         break;
 
       case SYS_EXEC:
-        get_arguments (f, 1, &argv[0]);
-        exec ((const char*)argv[0]);
+        argc = 1;
+        copy_in (argv, (uint32_t *) f->esp + 1, sizeof *argv * argc);
+        f->eax = exec ((const char*)argv[0]);
         break;
 
       case SYS_WAIT:
-        get_arguments (f, 1, &argv[0]);
-        wait (argv[0]);
+        argc = 1;
+        copy_in (argv, (uint32_t *) f->esp + 1, sizeof *argv * argc);
+        f->eax = wait (argv[0]);
         break;
 
       case SYS_CREATE:
-        get_arguments (f, 2, &argv[0]);
-        create ((const char *)argv[0], (unsigned)argv[1]);
+        argc = 2;
+        copy_in (argv, (uint32_t *) f->esp + 1, sizeof *argv * argc);
+        f->eax = create ((const char *)argv[0], (unsigned)argv[1]);
         break;
 
       case SYS_REMOVE:
-        get_arguments (f, 1, &argv[0]);
-        remove ((const char *)argv[0]);
+        argc = 1;
+        copy_in (argv, (uint32_t *) f->esp + 1, sizeof *argv * argc);
+        f->eax = remove ((const char *)argv[0]);
         break;
 
       case SYS_OPEN:
-        get_arguments (f, 1, &argv[0]);
-        open ((const char *)argv[0]);
+        argc = 1;
+        copy_in (argv, (uint32_t *) f->esp + 1, sizeof *argv * argc);
+        f->eax = open ((const char *)argv[0]);
         break;
 
       case SYS_FILESIZE:
-        get_arguments (f, 2, &argv[0]);
-        filesize ((int)argv[0]);
+        argc = 1;
+        copy_in (argv, (uint32_t *) f->esp + 1, sizeof *argv * argc);
+        f->eax = filesize (argv[0]);
         break;
 
       case SYS_READ:
-        get_arguments (f, 3, &argv[0]);
-        read ((int)argv[0], (void *)argv[1], (unsigned)argv[2]);
+        argc = 3;
+        copy_in (argv, (uint32_t *) f->esp + 1, sizeof *argv * argc);
+        f->eax = read (argv[0], (void *)argv[1], (unsigned)argv[2]);
         break;
 
       case SYS_WRITE:
-        get_arguments (f, 3, &argv[0]);
-        write ((int)argv[0], (void *)argv[1], (unsigned)argv[2]);
+        argc = 3;
+        copy_in (argv, (uint32_t *) f->esp + 1, sizeof *argv * argc);
+        f->eax = write (argv[0], (void *)argv[1], (unsigned)argv[2]);
         break;
 
       case SYS_SEEK:
-        get_arguments (f, 2, &argv[0]);
-        seek ((int)argv[0], (unsigned)argv[1]);
+        argc = 2;
+        copy_in (argv, (uint32_t *) f->esp + 1, sizeof *argv * argc);
+        seek (argv[0], (unsigned)argv[1]);
         break;
 
       case SYS_TELL:
-        get_arguments (f, 1, &argv[0]);
-        tell ((int)argv[0]);
+        argc = 1;
+        copy_in (argv, (uint32_t *) f->esp + 1, sizeof *argv * argc);
+        f->eax = tell (argv[0]);
         break;
 
       case SYS_CLOSE:
-        get_arguments (f, 1, &argv[0]);
-        close ((int)argv[0]);
+        argc = 1;
+        copy_in (argv, (uint32_t *) f->esp + 1, sizeof *argv * argc);
+        close (argv[0]);
         break;
     
       default:
@@ -141,7 +167,7 @@ exit (int status)
 
 pid_t
 exec (const char *cmd_line)
-{
+{ 
   return process_execute (cmd_line);
 }
 
@@ -154,6 +180,8 @@ wait (pid_t pid)
 bool
 create (const char *file, unsigned initial_size)
 {
+  if (file == NULL)
+    exit (-1);
   return filesys_create (file, initial_size);
 }
 
@@ -218,7 +246,6 @@ write (int fd, const void *buffer, unsigned size)
       putbuf (buffer, size); 	
       return size;
     }
-    
   struct thread *t = thread_current ();
   struct list_elem *e = list_find (&t->file_list, &cmp_fd, fd, NULL);
   struct pair *p = list_entry (e, struct pair, elem);

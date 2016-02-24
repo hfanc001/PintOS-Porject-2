@@ -151,7 +151,10 @@ page_fault (struct intr_frame *f)
   user = (f->error_code & PF_U) != 0;
 
   if (user && !(is_user_vaddr (fault_addr)))
+  {
+    printf ("fault_addr = %d\nPHYS_BASE = %d\n", (int)fault_addr, (int) PHYS_BASE);
     exit (-1);
+  }
 
   //if (write && not writeable)
 
