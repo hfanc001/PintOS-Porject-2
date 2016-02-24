@@ -196,16 +196,18 @@ remove (const char *file)
 int
 open (const char *file)
 {
-  struct pair p;
-  p.file = filesys_open (file);
-    if (p.file == NULL)
+  if (file == NULL)
+    return -1;
+  struct pair *p = malloc (4);
+  p->file = filesys_open (file);
+    if (p->file == NULL)
       return -1;
   struct thread *t = thread_current ();
-  p.fd = t->new_fd;
+  p->fd = t->new_fd;
   ++t->new_fd;
-  list_push_back (&t->file_list, &p.elem);
+  list_push_back (&t->file_list, &p->elem);
   
-  return p.fd;
+  return p->fd;
 }
 
 int
@@ -226,9 +228,14 @@ read (int fd, void *buffer, unsigned size)
     return -1;
   if (fd == 0)
     return input_getc ();
+
+  if (!is_user_vaddr (buffer))
+    exit (-1);
     
   struct thread *t = thread_current ();
   struct list_elem *e = list_find (&t->file_list, &cmp_fd, fd, NULL);
+  if (e == NULL)
+    return -1;
   struct pair *p = list_entry (e, struct pair, elem);
   if (p == NULL)
     return -1;
@@ -248,6 +255,8 @@ write (int fd, const void *buffer, unsigned size)
     }
   struct thread *t = thread_current ();
   struct list_elem *e = list_find (&t->file_list, &cmp_fd, fd, NULL);
+  if (e == NULL)
+    return;
   struct pair *p = list_entry (e, struct pair, elem);
   if (p == NULL)
     return -1;

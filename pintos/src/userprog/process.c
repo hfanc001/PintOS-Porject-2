@@ -312,11 +312,11 @@ load (const char *cmd_line, void (**eip) (void), void **esp)
 
   file_deny_write (file);
 
-  struct pair p;
-  p.file = file;
-  p.fd = t->new_fd;
+  struct pair *p = malloc (4);
+  p->file = file;
+  p->fd = t->new_fd;
   ++t->new_fd;
-  list_push_back (&t->file_list, &p.elem);
+  list_push_back (&t->file_list, &p->elem);
   
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -547,8 +547,8 @@ setup_stack_helper (const char *cmd_line, uint8_t *kpage, uint8_t *upage,
   uint8_t word_align = 0;
   char *const null = NULL;
   //char *ptr;
-  char **argv = malloc (argc * 4+1);
-  char **uarg = malloc (argc * 4+1);
+  char **argv = malloc (argc * 4 + 1);
+  char **uarg = malloc (argc * 4 + 1);
   char *karg = NULL;
   //char *tmp;
   bool success = true;
@@ -560,7 +560,7 @@ setup_stack_helper (const char *cmd_line, uint8_t *kpage, uint8_t *upage,
   for (token = strtok_r (cmd_line_, " ", &save_ptr); token != NULL;
        token = strtok_r (NULL, " ", &save_ptr))
     {
-      argv[i] = malloc(sizeof token);
+      argv[i] = malloc (sizeof token);
       strlcpy (argv[i], token, strlen (token) + 1);
       ++i;
     }
@@ -571,7 +571,7 @@ setup_stack_helper (const char *cmd_line, uint8_t *kpage, uint8_t *upage,
   ASSERT (karg != null);
   if (!karg)
     return false;
-  uarg[argc] = upage + (karg -(char *)kpage);
+  uarg[argc] = upage + (karg - (char *)kpage);
   
   /* push words onto stack */
   int j;
@@ -584,7 +584,7 @@ setup_stack_helper (const char *cmd_line, uint8_t *kpage, uint8_t *upage,
       if (karg == NULL)
 	return false;
       uarg[j] = upage + (karg - (char *)kpage);
-      ASSERT (is_user_vaddr(uarg[j]));
+      ASSERT (is_user_vaddr (uarg[j]));
       c_count += k;
     }
 
