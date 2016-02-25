@@ -152,7 +152,7 @@ page_fault (struct intr_frame *f)
 
   if (user && !(is_user_vaddr (fault_addr)))
   {
-    printf ("fault_addr = %d\nPHYS_BASE = %d\n", (int)fault_addr, (int) PHYS_BASE);
+    //printf ("fault_addr = %d\nPHYS_BASE = %d\n", (int)fault_addr, (int) PHYS_BASE);
     exit (-1);
   }
 

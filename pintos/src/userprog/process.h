@@ -16,14 +16,14 @@ struct pair
 
 struct exec_helper
   {
-    const char file_name[16];   /* first part form cmd_line */
+    const char file_name[16];   /* first part from cmd_line */
     char file_name_[16];
     size_t fn_length;           /* length of file_name */
     const char *cmd_line;       /* whole command line entry */
-    struct semaphore semaphore;
     bool load_success;
     struct thread *thread;
     struct thread *parent;
+    struct semaphore *exit_sema;
   };
 
 

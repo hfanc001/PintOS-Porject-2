@@ -224,8 +224,8 @@ filesize (int fd)
 int
 read (int fd, void *buffer, unsigned size)
 {
-  if (fd == 1)
-    return -1;
+  if (fd == 1 || !is_user_vaddr (buffer))
+    exit (-1);
   if (fd == 0)
     return input_getc ();
 
@@ -245,7 +245,7 @@ read (int fd, void *buffer, unsigned size)
 int
 write (int fd, const void *buffer, unsigned size)
 {
-  if (fd == 0)
+  if (fd == 0 || !is_user_vaddr (buffer))
     return -1;
   /*need to segment buffer if it is too big */
   if (fd == 1)
@@ -256,7 +256,7 @@ write (int fd, const void *buffer, unsigned size)
   struct thread *t = thread_current ();
   struct list_elem *e = list_find (&t->file_list, &cmp_fd, fd, NULL);
   if (e == NULL)
-    return;
+	return;
   struct pair *p = list_entry (e, struct pair, elem);
   if (p == NULL)
     return -1;
@@ -298,6 +298,8 @@ close (int fd)
     return;
   struct thread *t = thread_current ();
   struct list_elem *e = list_find (&t->file_list, &cmp_fd, fd, NULL);
+  if (e == NULL)
+    return;
   struct pair *p = list_entry (e, struct pair, elem);
   if (p == NULL)
     return;

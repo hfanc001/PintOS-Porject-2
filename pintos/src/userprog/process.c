@@ -36,7 +36,7 @@ process_execute (const char *cmd_line)
   struct thread *t = thread_current ();
   char thread_name[16];
   char *save_ptr;
-
+  
   exec.cmd_line = cmd_line;
   
   char cmd_line_[strlen (cmd_line) + 1];
@@ -49,9 +49,8 @@ process_execute (const char *cmd_line)
 
   if (exec.fn_length > 15 || thread_name_ == NULL )
     return TID_ERROR;
-  strlcpy (thread_name, thread_name_, strlen (thread_name_) + 1);
 
-  sema_init (&exec.semaphore, 0);
+  strlcpy (thread_name, thread_name_, strlen (thread_name_) + 1);
 
   tid_t tid;
 
@@ -62,7 +61,7 @@ process_execute (const char *cmd_line)
       exec.thread->parent = t;
       list_push_back (&t->child_list, &(exec.thread->child_of));
       
-      sema_down (&exec.semaphore);
+      sema_down (&exec.thread->exit_sema);
     }
   return tid;
 }
@@ -90,14 +89,16 @@ start_process (void *exec)
   /* If load failed, quit. */
   if (!(exec_->load_success) )
     {
+      t->load_success = false;
       thread_exit ();
     }
   else
     {
       /* load successful */
+      t->load_success = true;
     }
 
-  sema_up (&exec_->semaphore);
+  sema_up (&t->exit_sema);
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -107,6 +108,16 @@ start_process (void *exec)
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
 
   NOT_REACHED ();
+}
+
+static bool
+find_child (const struct list_elem *a, int tid, void *aux UNUSED)
+{
+  struct thread *x = list_entry (a, struct thread, child_of);
+  if (x->tid == tid)
+    return true;
+    
+  return false;
 }
 
 /* Waits for thread TID to die and returns its exit status.  If
@@ -119,41 +130,23 @@ start_process (void *exec)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
-	/*struct thread *parent = thread_current();
-	struct list_elem *tmp;
-	struct thread *child;
 
-	//find the thread struct of the child_tid
-  for (tmp = list_begin (&parent->child_list); tmp != list_end (&parent->child_list);
-       tmp = list_next (tmp))
-  {
-		struct thread *curr = list_entry (tmp, struct thread, elem);
-    if (child_tid == curr->tid)
-			child = curr;			
-  }
-  
+  struct thread *t = thread_current();
+  struct list_elem *e = list_find (&t->child_list, &find_child, child_tid,
+                                   NULL);
+  if (e == NULL)
+    return -1;
+  struct thread *child = list_entry (e, struct thread, child_of);
+
   //if the child does not exist
   if (child == NULL)
 		return -1;
 		
-	//if the child already called wait	
-	if (child->wait_cnt > 0)
-		return -1;
+  sema_down (&child->exit_sema);
 		
-	child->wait_cnt++;
-		
-	enum thread_status child_status = child->status;
-	
-	//if the child is running, ready, or blocked, put the parent to sleep
-	while (child->exit_cnt == 0)
-	{
-		thread_block();
-	}
-	
-	return child->status;*/
-  return -1;
+  return child_tid;
 }
 
 /* Free the current process's resources. */
@@ -161,13 +154,13 @@ void
 process_exit (void)
 {
   struct thread *cur = thread_current ();
+  if (&cur->exit_sema != NULL)
+    sema_up (&cur->exit_sema);
   uint32_t *pd;
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
-  
- // cur->exit_cnt++;
   
   if (pd != NULL) 
     {
@@ -546,11 +539,9 @@ setup_stack_helper (const char *cmd_line, uint8_t *kpage, uint8_t *upage,
   int i = 0;
   uint8_t word_align = 0;
   char *const null = NULL;
-  //char *ptr;
   char **argv = malloc (argc * 4 + 1);
   char **uarg = malloc (argc * 4 + 1);
   char *karg = NULL;
-  //char *tmp;
   bool success = true;
 
   char *token, *save_ptr;
